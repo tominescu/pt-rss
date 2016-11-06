@@ -25,9 +25,13 @@ func main() {
 		timeout = 30
 	}
 
+	httpClient := http.Client{
+		Timeout: time.Duration(timeout) * time.Second,
+	}
+
 	finish := make(chan int, 1)
 	for _, site := range c.Sites {
-		go handleSite(site, timeout, finish)
+		go handleSite(site, &httpClient, finish)
 	}
 
 	// Wait for finish
@@ -37,7 +41,7 @@ func main() {
 	log.Println("Exit because all goroutines are down")
 }
 
-func handleSite(site config.Site, timeout int, finish chan<- int) {
+func handleSite(site config.Site, httpClient *http.Client, finish chan<- int) {
 	logPrefix := fmt.Sprintf("[%s]\t", site.Name)
 	log := log.New(os.Stdout, logPrefix, log.LstdFlags)
 	log.Printf("Start with url %s", site.Rss)
@@ -57,7 +61,7 @@ func handleSite(site config.Site, timeout int, finish chan<- int) {
 			time.Sleep(time.Duration(site.Interval) * time.Second)
 		}
 
-		rsp, err := http.Get(site.Rss)
+		rsp, err := httpClient.Get(site.Rss)
 		if err != nil {
 			log.Printf("Error fetching rss:%s", err)
 			continue
@@ -83,7 +87,7 @@ func handleSite(site config.Site, timeout int, finish chan<- int) {
 		}
 		log.Printf("Get %d links include %d new links", len(links), len(newLinks))
 		for _, link := range newLinks {
-			if err = handleLink(&site, link, log); err != nil {
+			if err = handleLink(&site, link, log, httpClient); err != nil {
 				linkCountMap[link]++
 			} else {
 				linkCountMap[link] = LINK_RETRY_TIMES
@@ -92,9 +96,9 @@ func handleSite(site config.Site, timeout int, finish chan<- int) {
 	}
 }
 
-func handleLink(site *config.Site, link string, log *log.Logger) error {
+func handleLink(site *config.Site, link string, log *log.Logger, httpClient *http.Client) error {
 	log.Printf("Handled link %s", link)
-	rsp, err := http.Get(link)
+	rsp, err := httpClient.Get(link)
 	if err != nil {
 		log.Printf("Error download link %s : %s", link, err)
 		return err
