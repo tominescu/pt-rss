@@ -18,6 +18,8 @@ import (
 
 const LINK_RETRY_TIMES = 3
 
+var VERSION = "20161101"
+
 func main() {
 	c := loadConfig()
 	timeout := c.Timeout
@@ -143,6 +145,7 @@ func getFileName(value string) string {
 func loadConfig() *config.Config {
 	configPath := flag.String("c", "config.json", "The config file path")
 	help := flag.Bool("h", false, "Print this usage")
+	version := flag.Bool("v", false, "Print version")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [-c config.json] [-h]\n\n", os.Args[0])
 		flag.PrintDefaults()
@@ -150,6 +153,10 @@ func loadConfig() *config.Config {
 	flag.Parse()
 	if *help {
 		flag.Usage()
+		os.Exit(0)
+	}
+	if *version {
+		fmt.Fprintf(os.Stderr, "Version: %s\n\n", VERSION)
 		os.Exit(0)
 	}
 
