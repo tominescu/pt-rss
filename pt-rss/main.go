@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tominescu/hdc-rss/config"
-	"github.com/tominescu/hdc-rss/rss"
+	"github.com/tominescu/pt-rss/config"
+	"github.com/tominescu/pt-rss/rss"
 )
 
 const LINK_RETRY_TIMES = 3
