@@ -1,0 +1,17 @@
+{
+	"timeout": 30,
+	"sites": [
+		{
+			"name": "ttg",
+			"rss": "https://totheglory.im/putrssmc.php?par=yourpasskey",
+			"download_dir": "/media/NAS/Downloads/torrents",
+			"interval": 60
+		},
+		{
+			"name": "hdc",
+			"rss": "https://hdchina.club/torrentrss.php?rows=50&linktype=dl&passkey=yourpasskey&rsscart=1",
+			"download_dir": "/media/NAS/Downloads/torrents",
+			"interval": 60
+		}
+	]
+}
