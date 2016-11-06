@@ -1,6 +1,7 @@
 # pt-rss
 
-这是一个将PT站点rss订阅的种子下载到本地指定目录的小工具。兼容多数PT网站，例如：ttg、hdc、m-team等。
+这是一个将PT站点rss订阅的种子下载到本地指定目录的小工具。
+支持市面上大多数PT网站，例如：ttg、hdc、m-team、hdtime、tccf等
 
 ## 安装方法
 
