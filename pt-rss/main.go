@@ -26,7 +26,7 @@ const CREATE_TABLE_STMT = `CREATE TABLE IF NOT EXISTS urls (
 	update_time TimeStamp NOT NULL DEFAULT (datetime('now','localtime'))
 	);`
 
-var VERSION = "20161101"
+var VERSION = "v1.2"
 
 func main() {
 	c := loadConfig()
