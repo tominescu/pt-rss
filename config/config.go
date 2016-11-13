@@ -3,8 +3,9 @@ package config
 import "encoding/json"
 
 type Config struct {
-	Timeout int    `json:"timeout"`
-	Sites   []Site `json:"sites"`
+	Timeout     int    `json:"timeout"`
+	SettingsDir string `json:"settings_dir"`
+	Sites       []Site `json:"sites"`
 }
 
 type Site struct {

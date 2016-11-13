@@ -1,5 +1,6 @@
 {
 	"timeout": 30,
+	"settings_dir": "/media/NAS/Downloads/torrents",
 	"sites": [
 		{
 			"name": "ttg",

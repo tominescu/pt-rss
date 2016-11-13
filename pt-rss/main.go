@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -12,28 +13,55 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/tominescu/pt-rss/config"
 	"github.com/tominescu/pt-rss/rss"
 )
 
 const LINK_RETRY_TIMES = 3
+const CREATE_TABLE_STMT = `CREATE TABLE IF NOT EXISTS urls (
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	link VARCHAR(1024) NOT NULL,
+	download_count INTEGER NOT NULL DEFAULT '0',
+	update_time TimeStamp NOT NULL DEFAULT (datetime('now','localtime'))
+	);`
 
 var VERSION = "20161101"
 
 func main() {
 	c := loadConfig()
-	timeout := c.Timeout
-	if timeout <= 0 || timeout > 600 {
-		timeout = 30
+
+	timeout := 30
+	if 0 < c.Timeout && c.Timeout < 3600 {
+		timeout = c.Timeout
 	}
 
 	httpClient := http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 	}
 
+	if err := os.MkdirAll(c.SettingsDir, 0755); err != nil {
+		log.Printf("Error create settings directory: %s", err)
+		os.Exit(1)
+	}
+
+	dbPath := path.Join(c.SettingsDir, ".downloaded.db")
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Open db file failed: %s\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	// create table
+	_, err = db.Exec(CREATE_TABLE_STMT)
+	if err != nil {
+		panic(err)
+	}
+
 	finish := make(chan int, 1)
 	for _, site := range c.Sites {
-		go handleSite(site, &httpClient, finish)
+		go handleSite(site, &httpClient, db, finish)
 	}
 
 	// Wait for finish
@@ -43,7 +71,7 @@ func main() {
 	log.Println("Exit because all goroutines are down")
 }
 
-func handleSite(site config.Site, httpClient *http.Client, finish chan<- int) {
+func handleSite(site config.Site, httpClient *http.Client, db *sql.DB, finish chan<- int) {
 	logPrefix := fmt.Sprintf("[%s]\t", site.Name)
 	log := log.New(os.Stdout, logPrefix, log.LstdFlags)
 	log.Printf("Start with url %s", site.Rss)
@@ -54,7 +82,6 @@ func handleSite(site config.Site, httpClient *http.Client, finish chan<- int) {
 		finish <- 1
 	}
 
-	linkCountMap := make(map[string]int, 10)
 	firstTurn := true
 	for {
 		if firstTurn {
@@ -83,19 +110,52 @@ func handleSite(site config.Site, httpClient *http.Client, finish chan<- int) {
 		var newLinks []string
 
 		for _, link := range links {
-			if linkCountMap[link] < LINK_RETRY_TIMES {
+			count, _ := getLinkCount(db, link)
+			if count < LINK_RETRY_TIMES {
 				newLinks = append(newLinks, link)
 			}
 		}
 		log.Printf("Get %d links include %d new links", len(links), len(newLinks))
 		for _, link := range newLinks {
 			if err = handleLink(&site, link, log, httpClient); err != nil {
-				linkCountMap[link]++
+				incrLinkCount(db, link)
 			} else {
-				linkCountMap[link] = LINK_RETRY_TIMES
+				setLinkCount(db, link, LINK_RETRY_TIMES)
 			}
 		}
 	}
+}
+
+func getLinkCount(db *sql.DB, link string) (int, error) {
+	count := 0
+	err := db.QueryRow("SELECT download_count FROM urls WHERE link=?", link).Scan(&count)
+	switch {
+	case err == sql.ErrNoRows:
+		return count, nil
+	case err != nil:
+		panic(err)
+	default:
+		return count, err
+	}
+	return count, nil
+}
+
+func setLinkCount(db *sql.DB, link string, count int) error {
+	_, err := db.Exec("DELETE FROM urls WHERE link=?", link)
+	if err != nil {
+		panic(err)
+	}
+	_, err = db.Exec("INSERT INTO urls(link, download_count) VALUES(?,?)", link, count)
+	if err != nil {
+		panic(err)
+	}
+	return err
+}
+
+func incrLinkCount(db *sql.DB, link string) {
+	count, _ := getLinkCount(db, link)
+	count++
+	setLinkCount(db, link, count)
 }
 
 func handleLink(site *config.Site, link string, log *log.Logger, httpClient *http.Client) error {

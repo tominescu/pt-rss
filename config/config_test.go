@@ -4,6 +4,7 @@ import "testing"
 
 const CONFIG = `{
 	"timeout": 30,
+	"settings_dir": "/media/NAS/Downloads/torrents",
 	"sites": [
 		{
 			"name": "ttg",
@@ -31,6 +32,8 @@ func TestNewConfig(t *testing.T) {
 
 	if c.Timeout != 30 {
 		t.Fatal("timeout != 30")
+	} else if c.SettingsDir != "/media/NAS/Downloads/torrents" {
+		t.Fatal("settings_dir error")
 	} else {
 		t.Log("load timeout success")
 	}
