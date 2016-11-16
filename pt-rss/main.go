@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -27,6 +28,8 @@ const CREATE_TABLE_STMT = `CREATE TABLE IF NOT EXISTS urls (
 	);`
 
 var VERSION = "v1.2"
+
+var wp sync.WaitGroup
 
 func main() {
 	c := loadConfig()
@@ -59,19 +62,17 @@ func main() {
 		panic(err)
 	}
 
-	finish := make(chan int, 1)
 	for _, site := range c.Sites {
-		go handleSite(site, &httpClient, db, finish)
+		wp.Add(1)
+		go handleSite(site, &httpClient, db)
 	}
 
 	// Wait for finish
-	for _ = range c.Sites {
-		<-finish
-	}
+	wp.Wait()
 	log.Println("Exit because all goroutines are down")
 }
 
-func handleSite(site config.Site, httpClient *http.Client, db *sql.DB, finish chan<- int) {
+func handleSite(site config.Site, httpClient *http.Client, db *sql.DB) {
 	logPrefix := fmt.Sprintf("[%s]\t", site.Name)
 	log := log.New(os.Stdout, logPrefix, log.LstdFlags)
 	log.Printf("Start with url %s", site.Rss)
@@ -79,7 +80,8 @@ func handleSite(site config.Site, httpClient *http.Client, db *sql.DB, finish ch
 	// create download dir
 	if err := os.MkdirAll(site.DownloadDir, 0755); err != nil {
 		log.Printf("Error create download directory: %s", err)
-		finish <- 1
+		wp.Done()
+		return
 	}
 
 	firstTurn := true
