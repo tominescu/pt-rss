@@ -198,7 +198,12 @@ func getFileName(value string) string {
 	for _, str := range strings.Split(value, ";") {
 		str = strings.TrimSpace(str)
 		if strings.HasPrefix(str, "filename=") {
-			return strings.TrimPrefix(str, "filename=")
+			filename := strings.TrimPrefix(str, "filename=")
+			if strings.HasSuffix(str, "\"") {
+				return strings.Trim(str, "\"")
+			} else {
+				return filename
+			}
 		}
 	}
 	return ""
