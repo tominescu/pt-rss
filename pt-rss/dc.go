@@ -14,6 +14,8 @@ type downloadCounter struct {
 	data     map[string]int
 	lock     sync.Mutex
 	filename string
+	lastSet  time.Time
+	lastDump time.Time
 }
 
 func (dc *downloadCounter) GetCount(key string) int {
@@ -27,6 +29,7 @@ func (dc *downloadCounter) SetCount(key string, value int) {
 	dc.lock.Lock()
 	defer dc.lock.Unlock()
 	dc.data[key] = value
+	dc.lastSet = time.Now()
 }
 
 func (dc *downloadCounter) IncrCount(key string) {
@@ -52,11 +55,13 @@ func (dc *downloadCounter) Init(filename string) error {
 	if err != nil {
 		return err
 	}
-	ticker := time.NewTicker(time.Minute * 5)
+	ticker := time.NewTicker(time.Minute * 1)
 	go func() {
 		for t := range ticker.C {
-			dc.Dump()
-			fmt.Fprintf(os.Stderr, "%s downloaded count data dumped.\n", t)
+			if dc.lastDump.Before(dc.lastSet) {
+				dc.Dump()
+				fmt.Fprintf(os.Stderr, "%s downloaded count data dumped.\n", t)
+			}
 		}
 	}()
 	return nil
@@ -72,5 +77,6 @@ func (dc *downloadCounter) Dump() error {
 	if err != nil {
 		return err
 	}
+	dc.lastDump = time.Now()
 	return nil
 }
