@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"sync"
+	"time"
 )
 
 type downloadCounter struct {
@@ -51,6 +52,13 @@ func (dc *downloadCounter) Init(filename string) error {
 	if err != nil {
 		return err
 	}
+	ticker := time.NewTicker(time.Minute * 5)
+	go func() {
+		for t := range ticker.C {
+			dc.Dump()
+			fmt.Fprintf(os.Stderr, "%s downloaded count data dumped.\n", t)
+		}
+	}()
 	return nil
 }
 
