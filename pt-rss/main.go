@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -9,31 +8,43 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/tominescu/pt-rss/config"
 	"github.com/tominescu/pt-rss/rss"
 )
 
 const LINK_RETRY_TIMES = 3
-const CREATE_TABLE_STMT = `CREATE TABLE IF NOT EXISTS urls (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	link VARCHAR(1024) NOT NULL,
-	download_count INTEGER NOT NULL DEFAULT '0',
-	update_time TimeStamp NOT NULL DEFAULT (datetime('now','localtime'))
-	);`
 
-var VERSION = "v1.2"
+var (
+	VERSION = "v1.3"
+	wp      sync.WaitGroup
+)
 
-var wp sync.WaitGroup
+var dc downloadCounter
+
+func sigHandler(sigChan chan os.Signal) {
+	sig := <-sigChan
+	switch sig {
+	case syscall.SIGINT:
+		fallthrough
+	case syscall.SIGTERM:
+		dc.Dump()
+	}
+	os.Exit(0)
+}
 
 func main() {
-	c := loadConfig()
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go sigHandler(sigChan)
 
+	c := loadConfig()
 	timeout := 30
 	if 0 < c.Timeout && c.Timeout < 3600 {
 		timeout = c.Timeout
@@ -48,23 +59,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	dbPath := path.Join(c.SettingsDir, ".downloaded.db")
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Open db file failed: %s\n", err)
-		os.Exit(1)
-	}
-	defer db.Close()
-
-	// create table
-	_, err = db.Exec(CREATE_TABLE_STMT)
+	dcPath := path.Join(c.SettingsDir, ".downloaded.gob")
+	err := dc.Init(dcPath)
 	if err != nil {
 		panic(err)
 	}
 
 	for _, site := range c.Sites {
 		wp.Add(1)
-		go handleSite(site, &httpClient, db)
+		go handleSite(site, &httpClient)
 	}
 
 	// Wait for finish
@@ -72,7 +75,7 @@ func main() {
 	log.Println("Exit because all goroutines are down")
 }
 
-func handleSite(site config.Site, httpClient *http.Client, db *sql.DB) {
+func handleSite(site config.Site, httpClient *http.Client) {
 	logPrefix := fmt.Sprintf("[%s]\t", site.Name)
 	log := log.New(os.Stdout, logPrefix, log.LstdFlags)
 	log.Printf("Start with url %s", site.Rss)
@@ -112,7 +115,7 @@ func handleSite(site config.Site, httpClient *http.Client, db *sql.DB) {
 		var newLinks []string
 
 		for _, link := range links {
-			count, _ := getLinkCount(db, link)
+			count := dc.GetCount(link)
 			if count < LINK_RETRY_TIMES {
 				newLinks = append(newLinks, link)
 			}
@@ -120,44 +123,12 @@ func handleSite(site config.Site, httpClient *http.Client, db *sql.DB) {
 		log.Printf("Get %d links include %d new links", len(links), len(newLinks))
 		for _, link := range newLinks {
 			if err = handleLink(&site, link, log, httpClient); err != nil {
-				incrLinkCount(db, link)
+				dc.IncrCount(link)
 			} else {
-				setLinkCount(db, link, LINK_RETRY_TIMES)
+				dc.SetCount(link, LINK_RETRY_TIMES)
 			}
 		}
 	}
-}
-
-func getLinkCount(db *sql.DB, link string) (int, error) {
-	count := 0
-	err := db.QueryRow("SELECT download_count FROM urls WHERE link=?", link).Scan(&count)
-	switch {
-	case err == sql.ErrNoRows:
-		return count, nil
-	case err != nil:
-		panic(err)
-	default:
-		return count, err
-	}
-	return count, nil
-}
-
-func setLinkCount(db *sql.DB, link string, count int) error {
-	_, err := db.Exec("DELETE FROM urls WHERE link=?", link)
-	if err != nil {
-		panic(err)
-	}
-	_, err = db.Exec("INSERT INTO urls(link, download_count) VALUES(?,?)", link, count)
-	if err != nil {
-		panic(err)
-	}
-	return err
-}
-
-func incrLinkCount(db *sql.DB, link string) {
-	count, _ := getLinkCount(db, link)
-	count++
-	setLinkCount(db, link, count)
 }
 
 func handleLink(site *config.Site, link string, log *log.Logger, httpClient *http.Client) error {
